@@ -1,0 +1,302 @@
+<html>
+<body>
+
+<div id="divUi">
+	<h3>Barcode Generator</h3>
+	<p>
+		Enter a number to be encoded as a barcode,
+		select an encoding,
+		then click the "Encode" button to see the results.
+	</p>
+
+	<div>
+		<label>Number to Encode:</label>
+		<br />
+		<input
+			id="inputNumberToEncode"
+			type="number"
+			value="036000291452"
+		></input>
+	</div>
+
+	<div>
+		<label>Encoding:</label>
+		<br />
+		<select id="selectEncoding">
+			<option value="UPC">UPC</option>
+		</select>
+	</div>
+
+	<div>
+		<button onclick="buttonEncode_Clicked();">Encode</button>
+	</div>
+
+	<div>
+		<label>Barcode Generated:</label>
+		<div id="divOutput">
+			[none]
+		</div>
+	</div>
+</div>
+
+<script type="text/javascript">
+
+// UI event handlers.
+
+function buttonEncode_Clicked()
+{
+	var d = document;
+	var inputNumberToEncode =
+		d.getElementById("inputNumberToEncode");
+	var numberToEncodeAsString = inputNumberToEncode.value;
+
+	var selectEncoding = d.getElementById("selectEncoding");
+	var barcodeEncodingSelectedName = selectEncoding.value;
+	var barcodeEncoding =
+		BarcodeEncoding.byName(barcodeEncodingSelectedName);
+	var barcodeEncoder = new BarcodeEncoder(barcodeEncoding);
+
+	var barcodeImageSizeInPixels = new Coords(200, 100);
+	var barcodeAsCanvas =
+		barcodeEncoder.numberToCanvasWithSizeInPixels
+		(
+			numberToEncodeAsString,
+			barcodeImageSizeInPixels
+		);
+
+	var divOutput = d.getElementById("divOutput");
+	divOutput.innerHTML = "";
+	divOutput.appendChild(barcodeAsCanvas);
+}
+
+// Classes.
+
+class BarcodeEncoder
+{
+	constructor(encoding)
+	{
+		this.encoding = encoding;
+	}
+
+	
+	numberToCanvasWithSizeInPixels(numberToEncodeAsString, canvasSizeInPixels)
+	{
+		return this.encoding.numberToCanvasWithSizeInPixels
+		(
+			numberToEncodeAsString, canvasSizeInPixels
+		);
+	}
+}
+
+class BarcodeEncoding
+{
+	constructor(name, numberToCanvasWithSizeInPixels)
+	{
+		this.name = name;
+		this._numberToCanvasWithSizeInPixels
+			= numberToCanvasWithSizeInPixels;
+	}
+
+	static Instances()
+	{
+		if (this._instances == null)
+		{
+			this._instances = new BarcodeEncoding_Instances();
+		}
+		return this._instances;
+	}
+
+	static byName(name)
+	{
+		return this.Instances().byName(name);
+	}
+
+	numberToCanvasWithSizeInPixels
+	(
+		numberToEncodeAsString, canvasSizeInPixels
+	)
+	{
+		return this._numberToCanvasWithSizeInPixels
+		(
+			numberToEncodeAsString, canvasSizeInPixels
+		);
+	}
+
+}
+
+class BarcodeEncoding_Instances
+{
+	constructor()
+	{
+		this.Upc = new BarcodeEncoding
+		(
+			"UPC", // "Universal Product Code"
+			this.upcNumberToCanvasWithSizeInPixels
+		);
+
+		this._All =
+		[
+			this.Upc
+		];
+	}
+
+	byName(name)
+	{
+		return this._All.find(x => x.name == name);
+	}
+
+	upcNumberToCanvasWithSizeInPixels
+	(
+		numberToEncodeAsString, canvasSizeInPixels
+	)
+	{
+		var bitsAsStringsByChar = new Map
+		([
+			[ " ", "00" ], // "quiet zone" pattern
+			[ "|", "01010" ], // "guard" pattern
+
+			[ "0", "0001101" ],
+			[ "1", "0011001" ],
+			[ "2", "0010011" ],
+			[ "3", "0111101" ],
+			[ "4", "0100011" ],
+			[ "5", "0110001" ],
+			[ "6", "0101111" ],
+			[ "7", "0111011" ],
+			[ "8", "0110111" ],
+			[ "9", "0001011" ]
+		]);
+
+		var d = document;
+		var canvas = d.createElement("canvas");
+		canvas.width = canvasSizeInPixels.x;
+		canvas.height = canvasSizeInPixels.y;
+
+		var g = canvas.getContext("2d");
+		g.fillStyle = "White";
+		g.fillRect
+		(
+			0, 0,
+			canvasSizeInPixels.x, canvasSizeInPixels.y
+		);
+
+		g.fillStyle = "Black";
+
+		var quietZoneChar = " ";
+		var guardChar = "|";
+
+		var digitCount = 12;
+		var digitCountHalf = digitCount / 2;
+		var numberToEncodeAsStringHalfFirst
+			= numberToEncodeAsString.substr(0, digitCountHalf);
+		var numberToEncodeAsStringHalfSecond =
+			numberToEncodeAsString.substr(digitCountHalf);
+
+		var numberToEncodeWithQuietZonesAndGuardChars =
+			quietZoneChar
+			+ quietZoneChar
+			+ guardChar
+			+ numberToEncodeAsStringHalfFirst
+			+ guardChar
+			+ numberToEncodeAsStringHalfSecond
+			+ guardChar
+			+ quietZoneChar
+			+ quietZoneChar;
+
+		var charsToEncode =
+			numberToEncodeWithQuietZonesAndGuardChars.split("");
+
+		var encoding = this.encoding;
+
+		var lineHeightForPayloadChars =
+			canvasSizeInPixels.y * .9;
+		var lineHeightForGuardChars =
+			canvasSizeInPixels.y * .95; 
+
+		var pixelsPerBitX = 1.25;
+
+		var drawPosX = 0;
+
+		for (var c = 0; c < charsToEncode.length; c++)
+		{
+			var char = charsToEncode[c];
+
+			var charAsBitString =
+				bitsAsStringsByChar.get(char);
+
+			var charIsPayloadChar =
+				(char != guardChar && char != quietZoneChar);
+
+			var lineHeightForBit =
+				charIsPayloadChar
+				? lineHeightForPayloadChars
+				: lineHeightForGuardChars;
+
+			var linesAndSpacesAreInverted = false;
+				c > 6
+				&& charIsPayloadChar;
+				
+			for (var b = 0; b < charAsBitString.length; b++)
+			{
+				var bit = charAsBitString[b];				
+				var bitIsLineNotSpace =
+				(
+					(
+						bit == "1"
+						&& (linesAndSpacesAreInverted == false)
+					)
+					||
+					(
+						bit == "0"
+						&& linesAndSpacesAreInverted
+					)
+				);
+
+				if (bitIsLineNotSpace)
+				{
+					g.fillRect
+					(
+						drawPosX, 0,
+						pixelsPerBitX, lineHeightForBit
+					);
+				}
+
+				drawPosX += pixelsPerBitX;
+			}
+		}
+
+		var textPosY = canvasSizeInPixels.y;
+
+		var numberToEncodeAsStringDigit0
+			= numberToEncodeAsString[0];
+
+		var numberToEncodeAsStringDigits1To5
+			= numberToEncodeAsString.substr(1, 5);
+
+		var numberToEncodeAsStringDigits6To10
+			= numberToEncodeAsString.substr(6, 5);
+
+		var numberToEncodeAsStringDigit11
+			= numberToEncodeAsString[11];
+
+		g.fillText(numberToEncodeAsStringDigit0, 0, textPosY);
+		g.fillText(numberToEncodeAsStringDigits1To5, pixelsPerBitX * 22, textPosY);
+		g.fillText(numberToEncodeAsStringDigits6To10, pixelsPerBitX * 66, textPosY);
+		g.fillText(numberToEncodeAsStringDigit11, pixelsPerBitX * 104, textPosY);
+
+		return canvas;
+	}
+}
+
+class Coords
+{
+	constructor(x, y)
+	{
+		this.x = x;
+		this.y = y;
+	}
+}
+
+</script>
+</body>
+</html>
